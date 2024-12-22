@@ -18,19 +18,21 @@ public class RabbitDemoApplication {
 		SpringApplication.run(RabbitDemoApplication.class, args);
 	}
 
+/*
 	@Bean
 	public ApplicationRunner runner(RabbitTemplate template) {
 		return args -> {
 			template.convertAndSend("myQueue", "Hello, world!");
 		};
 	}
+*/
 
 	@Bean
 	public Queue myQueue() {
 		return new Queue(MY_QUEUE_NAME, NON_DURABLE);
 	}
 
-	@RabbitListener(queues = MY_QUEUE_NAME)
+	@RabbitListener(queues = MY_QUEUE_NAME, id = "myQueueListener")
 	public void listen(String in) {
 		System.out.println("Message read from myQueue : " + in);
 	}
