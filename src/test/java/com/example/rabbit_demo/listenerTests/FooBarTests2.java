@@ -31,7 +31,7 @@ public class FooBarTests2 {
 
     @Configuration
     @EnableRabbit
-    @RabbitListenerTest(capture = true)
+    @RabbitListenerTest(spy = true, capture = false)
     public static class ListenerConfig {
         @Bean
         public Listener listener() {
