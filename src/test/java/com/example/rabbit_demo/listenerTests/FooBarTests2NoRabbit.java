@@ -1,5 +1,7 @@
 package com.example.rabbit_demo.listenerTests;
 
+import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Channel;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AnonymousQueue;
 import org.springframework.amqp.core.Queue;
@@ -7,31 +9,40 @@ import org.springframework.amqp.rabbit.annotation.EnableRabbit;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
+import org.springframework.amqp.rabbit.connection.Connection;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.rabbit.junit.RabbitAvailable;
 import org.springframework.amqp.rabbit.test.RabbitListenerTest;
 import org.springframework.amqp.rabbit.test.RabbitListenerTestHarness;
+import org.springframework.amqp.rabbit.test.TestRabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
+import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.amqp.rabbit.test.RabbitListenerTestHarness.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willReturn;
+import static org.mockito.Mockito.mock;
+import static org.springframework.amqp.rabbit.test.RabbitListenerTestHarness.InvocationData;
 
 @SpringBootTest
-public class FooBarTests2 {
+public class FooBarTests2NoRabbit {
 
     @Configuration
     @EnableRabbit
-    @RabbitListenerTest(spy = true, capture = false)
+    @RabbitListenerTest(spy = true, capture = true)
     public static class ListenerConfig {
         @Bean
         public Listener listener() {
@@ -39,8 +50,24 @@ public class FooBarTests2 {
         }
 
         @Bean
-        public ConnectionFactory connectionFactory() {
-            return new CachingConnectionFactory("localhost");
+        public ConnectionFactory connectionFactory() throws IOException {
+            ConnectionFactory factory = mock(ConnectionFactory.class);
+            Connection connection = mock(Connection.class);
+            Channel channel = mock(Channel.class);
+            AMQP.Queue.DeclareOk declareOk = mock(AMQP.Queue.DeclareOk.class);
+            willReturn(connection).given(factory).createConnection();
+            willReturn(channel).given(connection).createChannel(anyBoolean());
+            given(channel.isOpen()).willReturn(true);
+            given(channel.queueDeclare(anyString(), anyBoolean(), anyBoolean(), anyBoolean(), anyMap()))
+                    .willReturn(declareOk);
+            return factory;
+        }
+
+        @Bean
+        public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory() throws IOException {
+            SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+            factory.setConnectionFactory(connectionFactory());
+            return factory;
         }
 
         @Bean
@@ -54,10 +81,8 @@ public class FooBarTests2 {
         }
 
         @Bean
-        public RabbitTemplate template(ConnectionFactory cf) {
-            RabbitTemplate rabbitTemplate1 = new RabbitTemplate(cf);
-            rabbitTemplate1.setUsePublisherConnection(true);
-            return rabbitTemplate1;
+        public TestRabbitTemplate template() throws IOException {
+            return new TestRabbitTemplate(connectionFactory());
         }
 
         @Bean
@@ -65,12 +90,6 @@ public class FooBarTests2 {
             return new RabbitAdmin(cf);
         }
 
-        @Bean
-        public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(ConnectionFactory cf) {
-            SimpleRabbitListenerContainerFactory containerFactory = new SimpleRabbitListenerContainerFactory();
-            containerFactory.setConnectionFactory(cf);
-            return containerFactory;
-        }
     }
 
     @Autowired
@@ -101,7 +120,7 @@ public class FooBarTests2 {
         this.rabbitTemplate.convertAndSend(this.queue2.getName(), "baz");
         this.rabbitTemplate.convertAndSend(this.queue2.getName(), "ex");
 
-        RabbitListenerTestHarness.InvocationData invocationData =
+        InvocationData invocationData =
                 this.harness.getNextInvocationDataFor("bar", 10, TimeUnit.SECONDS);
         Object[] args = invocationData.getArguments();
         assertThat((String) args[0]).isEqualTo("bar");
@@ -127,7 +146,7 @@ public class FooBarTests2 {
        }
 
        @RabbitListener(id="bar", queues="#{queue2.name}")
-       public void foo(@Payload String foo, @Header("amqp_receivedRoutingKey") String rk) {
+       public void foo1(@Payload String foo) {
            if (!failed && foo.equals("ex")) {
                failed = true;
                throw new RuntimeException(foo);

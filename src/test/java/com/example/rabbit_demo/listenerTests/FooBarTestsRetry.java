@@ -1,5 +1,6 @@
 package com.example.rabbit_demo.listenerTests;
 
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AnonymousQueue;
 import org.springframework.amqp.core.Queue;
@@ -18,16 +19,18 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.retry.backoff.ExponentialBackOffPolicy;
+import org.springframework.retry.support.RetryTemplate;
 
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.amqp.rabbit.test.RabbitListenerTestHarness.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.amqp.rabbit.test.RabbitListenerTestHarness.InvocationData;
 
 @SpringBootTest
-public class FooBarTests2 {
+@Slf4j
+public class FooBarTestsRetry {
 
     @Configuration
     @EnableRabbit
@@ -55,9 +58,23 @@ public class FooBarTests2 {
 
         @Bean
         public RabbitTemplate template(ConnectionFactory cf) {
-            RabbitTemplate rabbitTemplate1 = new RabbitTemplate(cf);
-            rabbitTemplate1.setUsePublisherConnection(true);
-            return rabbitTemplate1;
+            RabbitTemplate template = new RabbitTemplate(connectionFactory());
+            RetryTemplate retryTemplate = new RetryTemplate();
+            // recovery callback will be user for retry template
+            template.setRecoveryCallback(context -> {
+                int retryCount = context.getRetryCount();
+                context.getLastThrowable().getStackTrace();
+                log.error("Retry count: " + retryCount  + " " + context.getLastThrowable().getMessage());
+                return null;
+            });
+            ExponentialBackOffPolicy backOffPolicy = new ExponentialBackOffPolicy();
+            backOffPolicy.setInitialInterval(500); // halh of the second
+            backOffPolicy.setMultiplier(10.0); // interval will be multiplied by 10 for the next attempt
+            backOffPolicy.setMaxInterval(10000); // max interval is 10 seconds
+            retryTemplate.setBackOffPolicy(backOffPolicy);
+            template.setRetryTemplate(retryTemplate);
+            template.setUsePublisherConnection(true);
+            return template;
         }
 
         @Bean
@@ -101,7 +118,7 @@ public class FooBarTests2 {
         this.rabbitTemplate.convertAndSend(this.queue2.getName(), "baz");
         this.rabbitTemplate.convertAndSend(this.queue2.getName(), "ex");
 
-        RabbitListenerTestHarness.InvocationData invocationData =
+        InvocationData invocationData =
                 this.harness.getNextInvocationDataFor("bar", 10, TimeUnit.SECONDS);
         Object[] args = invocationData.getArguments();
         assertThat((String) args[0]).isEqualTo("bar");
