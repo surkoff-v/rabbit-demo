@@ -26,6 +26,7 @@ public class PublisherReturns {
         @Bean
         public ConnectionFactory connectionFactory() {
             CachingConnectionFactory connectionFactory = new CachingConnectionFactory("localhost");
+            connectionFactory.setPublisherReturns(true);
             return connectionFactory;
         }
 
