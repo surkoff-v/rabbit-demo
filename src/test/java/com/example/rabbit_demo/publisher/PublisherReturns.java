@@ -15,7 +15,7 @@ import org.springframework.context.annotation.Configuration;
 @Slf4j
 @SpringBootTest
 @EnableRabbit
-public class PublisherConfirms {
+public class PublisherReturns {
 
     @Autowired
     private RabbitTemplate rabbitTemplate;
@@ -26,27 +26,27 @@ public class PublisherConfirms {
         @Bean
         public ConnectionFactory connectionFactory() {
             CachingConnectionFactory connectionFactory = new CachingConnectionFactory("localhost");
-            connectionFactory.setPublisherReturns(true);
             return connectionFactory;
         }
 
         @Bean
         public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
             RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
+            rabbitTemplate.setMandatory(true);
             return rabbitTemplate;
         }
     }
 
     @Test
     public void testConfirm() {
-       rabbitTemplate.setConfirmCallback((correlationData, ack, cause) -> {
-            if (ack) {
-                System.out.println("Message confirmed!");
-            } else {
-                System.err.println("Message not confirmed: " + cause);
-            }
-       });
-       rabbitTemplate.convertAndSend("myQueue", "foo");
+        rabbitTemplate.setReturnsCallback(returned -> {
+            log.error("Message returned: " + returned.getMessage());
+            log.error("Reason: " + returned.getReplyText());
+            log.error("Reply code: " + returned.getReplyCode());
+            log.error("Exchange: " + returned.getExchange());
+            log.error("Routing key: " + returned.getRoutingKey());
+        });
+       rabbitTemplate.convertAndSend("myQueue1", "foo");
     }
 
 
