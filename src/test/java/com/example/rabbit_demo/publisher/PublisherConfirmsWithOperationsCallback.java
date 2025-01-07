@@ -38,6 +38,7 @@ public class PublisherConfirmsWithOperationsCallback {
         public ConnectionFactory connectionFactory() {
             CachingConnectionFactory connectionFactory = new CachingConnectionFactory("localhost");
             connectionFactory.setPublisherConfirmType(CachingConnectionFactory.ConfirmType.CORRELATED);
+            connectionFactory.setUsername("guest");
             return connectionFactory;
         }
 
@@ -45,6 +46,7 @@ public class PublisherConfirmsWithOperationsCallback {
         public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
             RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
             rabbitTemplate.setMandatory(true);
+            rabbitTemplate.setUserIdExpressionString("@connectionFactory.username");
             return rabbitTemplate;
         }
     }
