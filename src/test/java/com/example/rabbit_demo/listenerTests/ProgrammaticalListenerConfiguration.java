@@ -18,6 +18,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 @Slf4j
 @SpringBootTest
 public class ProgrammaticalListenerConfiguration {
@@ -52,22 +57,28 @@ public class ProgrammaticalListenerConfiguration {
     RabbitTemplate rabbitTemplate;
 
 
-    private SimpleMessageListenerContainer createContainer() {
+    private SimpleMessageListenerContainer createContainer(CountDownLatch latch) {
         SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(connectionFactory);
         container.setQueueNames("dynamicQueue");
-        container.setMessageListener(exampleListener());
-        container.start();
+        container.setMessageListener(exampleListener(latch));
         return container;
     }
 
-    public MessageListener exampleListener() {
-            return message -> System.out.println("received: " + message);
+    public MessageListener exampleListener(CountDownLatch latch) {
+            return message -> {
+                log.info("received: " + message);
+                latch.countDown();
+            };
     }
 
     @Test
-    public void testDynamicQueue() {
-        SimpleMessageListenerContainer container = createContainer();
+    public void testDynamicQueue() throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(1);
+        SimpleMessageListenerContainer container = createContainer(latch);
+        container.start();
         rabbitTemplate.convertAndSend("dynamicQueue", "Hello, World!");
+        boolean completed = latch.await(5, TimeUnit.SECONDS);
+        assertTrue(completed," did not receive message");
         container.stop();
     }
 
