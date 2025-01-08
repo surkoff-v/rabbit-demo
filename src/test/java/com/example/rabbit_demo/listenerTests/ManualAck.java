@@ -2,10 +2,7 @@ package com.example.rabbit_demo.listenerTests;
 
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
-import org.springframework.amqp.core.AcknowledgeMode;
-import org.springframework.amqp.core.AnonymousQueue;
-import org.springframework.amqp.core.Queue;
-import org.springframework.amqp.core.QueueBuilder;
+import org.springframework.amqp.core.*;
 import org.springframework.amqp.rabbit.annotation.EnableRabbit;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
@@ -23,6 +20,8 @@ import org.springframework.messaging.handler.annotation.Header;
 import com.rabbitmq.client.Channel;
 
 import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @SpringBootTest
@@ -35,6 +34,11 @@ public class ManualAck {
        @Bean
         Queue queue1() {
            return QueueBuilder.durable("manual.acks.1").build();
+        }
+
+        @Bean
+        Queue queue2() {
+            return QueueBuilder.durable("manual.acks.2").build();
         }
 
         @Bean
@@ -63,7 +67,7 @@ public class ManualAck {
         }
     }
 
-    @RabbitListener(id = "manual.acks.1", queues = "manual.acks.1", ackMode = "MANUAL") // on the container factory is enough there we can change the ackMode from Container factory
+    @RabbitListener(id = "manual.acks.2", queues = "manual.acks.2", ackMode = "MANUAL") // on the container factory is enough there we can change the ackMode from Container factory
     public void manual1(String in, Channel channel,
                         @Header(AmqpHeaders.DELIVERY_TAG) long tag) throws IOException {
         log.info("received: " + in);
@@ -79,13 +83,45 @@ public class ManualAck {
         }
     }
 
+    void processMessage(Message message) {
+        log.info("Processing message: {}", message);
+        if (message.getMessageProperties().getDeliveryTag() % 2 == 0) {
+            throw new RuntimeException("Simulated processing error");
+        }
+    }
+
+
+    @RabbitListener(id = "manual.acks.1", queues = "manual.acks.1", ackMode = "MANUAL")
+    public void handleRecomendedApproach(Message message, Channel channel) {
+        try {
+            // Process the message
+            processMessage(message);
+            // Acknowledge the message if processing succeeds
+            channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
+        } catch (Exception e) {
+            // Discard the message and log the error
+            log.error("discarding message: {}", e.getMessage());
+            try {
+                channel.basicReject(message.getMessageProperties().getDeliveryTag(), false);
+            } catch (IOException ioException) {
+                log.error("Failed to reject message", ioException);
+            }
+        } finally {
+            latch.countDown();
+        }
+    }
+
     @Autowired
     RabbitTemplate rabbitTemplate;
 
+    private CountDownLatch latch = new CountDownLatch(2);
+
     @Test
-    public void test() {
+    public void test() throws InterruptedException {
         rabbitTemplate.convertAndSend("manual.acks.1", "nnn");
-        rabbitTemplate.convertAndSend("manual.acks.1", "rrr");
-        rabbitTemplate.convertAndSend("manual.acks.1", "aaa");
+        rabbitTemplate.convertAndSend("manual.acks.1", "eee");
+        latch.await(5, TimeUnit.SECONDS);
     }
+
+
 }
