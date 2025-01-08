@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageListener;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
@@ -18,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -41,7 +43,7 @@ public class ProgrammaticalListenerConfiguration {
 
         @Bean
         Queue queue() {
-            return new Queue("dynamicQueue");
+            return QueueBuilder.nonDurable().autoDelete().build();
         }
 
         @Bean
@@ -56,10 +58,14 @@ public class ProgrammaticalListenerConfiguration {
     @Autowired
     RabbitTemplate rabbitTemplate;
 
+    @Autowired
+    Queue queue;
+
 
     private SimpleMessageListenerContainer createContainer(CountDownLatch latch) {
         SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(connectionFactory);
-        container.setQueueNames("dynamicQueue");
+        container.setQueueNames(queue.getName());
+        container.setConsumerArguments(Map.of("x-priority", Integer.valueOf(1)));
         container.setMessageListener(exampleListener(latch));
         return container;
     }
@@ -76,7 +82,7 @@ public class ProgrammaticalListenerConfiguration {
         CountDownLatch latch = new CountDownLatch(1);
         SimpleMessageListenerContainer container = createContainer(latch);
         container.start();
-        rabbitTemplate.convertAndSend("dynamicQueue", "Hello, World!");
+        rabbitTemplate.convertAndSend(queue.getName(), "Hello, World!");
         boolean completed = latch.await(5, TimeUnit.SECONDS);
         assertTrue(completed," did not receive message");
         container.stop();
