@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.core.AnonymousQueue;
+import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.annotation.EnableRabbit;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -61,6 +62,7 @@ public class RabbitListenerErrorHandlerAndManualNackTest {
             containerFactory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
             containerFactory.setDefaultRequeueRejected(false);
             return containerFactory;
+
         }
 
         @Bean
